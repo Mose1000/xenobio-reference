@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xenobiology DB Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        html { scroll-behavior: smooth; }
+        @keyframes highlightPulse {
+            0% { box-shadow: 0 0 0 3px #10b981; transform: scale(1.02); }
+            100% { box-shadow: 0 0 0 0px #10b981; transform: scale(1); }
+        }
+        .highlight-card { animation: highlightPulse 1.5s ease-out forwards; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-300 min-h-screen font-sans">
+
+    <!-- Sticky Header -->
+    <header class="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-700 shadow-md px-4 py-3">
+        <div class="max-w-[100rem] mx-auto flex flex-col sm:flex-row gap-4 justify-between items-center">
+            
+            <div class="flex items-center gap-4 w-full sm:w-auto">
+                <h1 class="text-xl font-bold text-emerald-500 flex items-center gap-2 whitespace-nowrap">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    XenoBio
+                </h1>
+                <label class="cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap">
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    Load JSON
+                    <input type="file" id="json-upload" accept=".json" class="hidden">
+                </label>
+                <div class="relative w-full sm:w-72">
+                    <svg class="absolute left-3 top-2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <input type="text" id="search-bar" placeholder="Search slimes or reactions..." class="w-full bg-slate-950 border border-slate-700 rounded-lg py-1.5 pl-9 pr-3 text-sm focus:outline-none focus:border-emerald-500 transition-all">
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 hide-scrollbar">
+                <span class="text-xs font-bold text-slate-500 uppercase tracking-widest mr-2">Tiers:</span>
+                <div id="tier-filters" class="flex gap-1.5">
+                    <button data-tier="all" class="filter-btn active bg-emerald-600 text-white px-3 py-1 rounded-md text-sm font-semibold">All</button>
+                    <!-- Generated Dynamically by JS -->
+                </div>
+                
+                <button id="clear-filters-btn" class="hidden ml-3 flex items-center gap-1.5 text-xs font-bold uppercase bg-rose-950/80 text-rose-400 border border-rose-900/50 px-3 py-1 rounded-md hover:bg-rose-900 transition-colors whitespace-nowrap">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    Clear Filter
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-[100rem] mx-auto p-4 md:p-6">
+        
+        <!-- Dynamic Mutation Path Banner -->
+        <div id="family-line-banner" class="hidden mb-6 bg-slate-900/80 border border-slate-700 rounded-lg shadow-lg overflow-hidden">
+            <div class="px-4 py-3 bg-slate-800/80 border-b border-slate-700 flex justify-between items-center">
+                <h3 class="text-emerald-400 font-bold flex items-center gap-2 text-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                    Mutation Path: <span id="family-line-text" class="text-slate-200 ml-1 font-normal">...</span>
+                </h3>
+            </div>
+            <!-- Linear Flow View -->
+            <div class="p-4 overflow-x-auto">
+                <div id="family-tree-flow" class="flex items-center gap-2 min-w-max">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div id="slime-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <!-- Cards generated by JS -->
+        </div>
+        
+        <div id="no-results" class="hidden text-center py-16 text-slate-500">
+            <p class="text-lg font-semibold">No data found.</p>
+        </div>
+    </main>
+
+    <script>
+        // --- 1. TOOLTIP & NAME MAPPING SYSTEM ---
+        const TOOLTIP_DATA = {
+            "Epinephrine": { name: "Epinephrine", desc: "Heals tissue damage and helps revive dead patients." },
+            "MobSlimeXenobioBabyGrey": { name: "Baby Grey Slimes", desc: "Spawns 1-3 baby slimes to continue your mitosis farm." },
+            "MonkeyCube": { name: "Monkey Cubes", desc: "Spawns 3 monkey cubes. Add water to make slime food." },
+            "Foam": { name: "Extinguishing Foam", desc: "Creates a foam that carries any other reagents injected into the extract." },
+            "FrostOil": { name: "Frost Oil", desc: "Produces highly cold frost oil." },
+            "XenobioJellyBlue": { name: "Slime Stabilizer", desc: "Reduces a slime's mutation chance by 25% per unit (carries through generations)." },
+            "SheetGlass1": { name: "Glass Sheets", desc: "Standard building material." },
+            "SheetRGlass1": { name: "Reinforced Glass", desc: "Durable building material." },
+            "SheetSteel1": { name: "Steel Sheets", desc: "Standard building material." },
+            "SheetPlasteel1": { name: "Plasteel Sheets", desc: "Advanced, highly durable building material." },
+            "TearGas": { name: "Tear Gas", desc: "Creates a smoke cloud that blinds and stuns those inside." },
+            "CapsaicinOil": { name: "Capsaicin Oil", desc: "Pepper spray. Blinds and irritates the eyes." },
+            "ArtifactFragment1": { name: "Artifact Fragments", desc: "Creates 1-3 anomalous artifact fragments." },
+            "XenobioJellyPurple": { name: "Slime Steroid", desc: "Adds one extract to a slime when it's grinded." },
+            "Omnizine": { name: "Omnizine", desc: "A miraculous universal healing medicine." },
+            "Pluoxium": { name: "Pluoxium Gas", desc: "Creates a small amount of breathable oxygen/pluoxium." },
+            "XenobioJellyCerulean": { name: "Slime Boost", desc: "When ingested by a slime, it will produce more offspring on mitosis." },
+            "XenobioJellyDarkBlue": { name: "Slime Chilling Jelly", desc: "Makes the consumer immune to fire and ash storms for 60s per unit." },
+            "Frezon": { name: "Frezon Gas", desc: "Creates a small amount of Frezon gas." },
+            "Leporazine": { name: "Leporazine", desc: "Perfectly stabilizes the patient's body temperature." },
+            "SheetPlastic10": { name: "Plastic Sheets", desc: "Produces 1 stack of plastic." },
+            "SheetPlasma1": { name: "Solid Plasma", desc: "Creates sheets of highly flammable plasma." },
+            "Plasma": { name: "Plasma Gas", desc: "Releases highly toxic and flammable Plasma gas." },
+            "AluminiumMetalFoam": { name: "Aluminium Foam", desc: "Creates a small aluminium metal foam." },
+            "IngotSilver1": { name: "Silver Ingots", desc: "Creates bars of silver." },
+            "XenobioGoopBall": { name: "Goop Balls", desc: "A screaming ball of goo! Thrown to create a destructible (30HP), airtight Xeno Goo Wall that slows movement." },
+            "XenobioVolatileOrgan": { name: "Volatile Organ", desc: "A self-recharging, EMP-proof powercell organ (capacity of ~5 hyper cells). Cannot be used in Svalinn lasers." },
+            "FloorTileItemBluespace": { name: "Bluespace Floor Tiles", desc: "Entities that go over normal tiles to dramatically increase movement speed." },
+            "MaterialBSCrystal1": { name: "Bluespace Crystals", desc: "Creates 5 bluespace crystals." },
+            "RPassiveMobSpawner": { name: "Passive Mobs", desc: "Spawns 5 passive animals." },
+            "RHostileMobSpawner": { name: "Hostile Mobs", desc: "Spawns 5 hostile animals." },
+            "RNeutralMobSpawner": { name: "Neutral Mobs", desc: "Spawns 5 neutral animals." },
+            "XenobioFelinidToxin": { name: "Felinid Toxin", desc: "15u turns any non-felinid into a Felinid." },
+            "XenobioJellyGreen": { name: "Green Slime Jelly", desc: "15u turns any non-slime person into a Slimeperson. Might cause mutations on consumption." },
+            "XenobioHumanToxin": { name: "Human Toxin", desc: "15u turns any non-human into a Human." },
+            "XenobioJellyPink": { name: "Slime Docility Extract", desc: "5u turns any hostile mob docile." },
+            "XenobioGenderFluid": { name: "Gender Fluid", desc: "5u changes your biological sex." },
+            "XenobioVolatileRedExtractJelly": { name: "Volatile Slime Jelly", desc: "Apply to clothing to remove movement slowdowns, but makes you very flammable." },
+            "XenobioJellyRed": { name: "Slime Destabilizer", desc: "Increases a slime's mutation chance by 25% per unit (carries through generations)." },
+            "Tilenol": { name: "Tilenol", desc: "Creates Tilenol, a standard painkiller." },
+            "XenoExtractChronofield": { name: "Chronofield", desc: "After 7 seconds, stops time for 15 seconds." },
+            "FloorTileItemSepia": { name: "Sepia Floor Tiles", desc: "Entities that go over normal tiles to decrease movement speed." },
+            "Healium": { name: "Healium Gas", desc: "Creates a small amount of Healium gas." },
+            "XenobioAdamantineBar": { name: "Adamantine Bar", desc: "Creates a bar of Adamantine (sells for 10,000)." },
+            "AdvancedMutationToxin": { name: "Adv. Mutation Toxin", desc: "15u turns you into a random species." },
+            "Pax": { name: "Pax Gas", desc: "Creates a big smoke cloud of Pax, pacifying those inside." },
+            "Cognizine": { name: "Cognizine", desc: "Grants sapience/speech to simple animals." },
+            "SpaceLube": { name: "Space Lube", desc: "An incredibly slippery liquid. Do not run on this." }
+        };
+
+        const ACTION_TOOLTIPS = {
+            "MakeUnreactiveEntityEffect": "The extract is consumed and destroyed.",
+            "DoSmokeEntityEffect": "Creates a thick cloud of smoke.",
+            "IgniteNearbyEffect": "Instantly ignites anyone in the range of 3 tiles, does not ignite the user.",
+            "FlashReactionEffect": "Produces a blinding flash of light.",
+            "ExtinguishNearby": "Extinguishes nearby entities.",
+            "EmpReactionEffect": "Creates an EMP - more blood = higher range.",
+            "RandomTeleportNearby": "Teleports anyone close to it - the teleport range is big.",
+            "MutateNearbyPlantsEntityEffect": "Mutates nearby plants.",
+            "ForceStealthNearbyEffect": "Turns anyone nearby invisible. Distance/Duration/Strength varies based on extract reagent.",
+            "ChangeFactionNearbyEffect": "Makes nearby animals hostile to everyone for 30 seconds (hostiles won't target hostiles).",
+            "ScrambleNearbyEffect": "Scrambles DNA if you are close enough.",
+            "ExplosionReactionEffect": "Creates a medium sized explosion."
+        };
+
+        // --- 2. THE AUTOMATED SS14 JSON PARSER ---
+        let rawDatabase = []; 
+        let maxTierGlobal = 0;
+
+        function buildEffectHTML(text, tooltip) {
+            if (!tooltip) return `<span class="text-slate-400">${text}</span>`;
+            return `<span title="${tooltip}" class="text-slate-300 cursor-help border-b border-dotted border-slate-600 hover:text-emerald-300 transition-colors">${text}</span>`;
+        }
+
+        function parseGoobstationJSON(jsonArray) {
+            let extractsMap = {};
+            let breedsMap = {};
+            
+            // Step 1: Separate Extracts and Breeds
+            jsonArray.forEach(item => {
+                if (!item || item.abstract) return;
+                if (item.type === 'breed') breedsMap[item.id] = item;
+                else if (item.type === 'entity' && item.id && item.id.endsWith('Extract')) extractsMap[item.id] = item;
+            });
+
+            // Step 2: Calculate Ancestry (Parents) from Breeds
+            let breedParents = {};
+            Object.values(breedsMap).forEach(b => {
+                const slimeComp = b.components?.find(c => c.type === 'Slime');
+                const children = slimeComp?.potentialMutations || [];
+                children.forEach(childId => {
+                    if (!breedParents[childId]) breedParents[childId] = [];
+                    if (!breedParents[childId].includes(b.id)) breedParents[childId].push(b.id);
+                });
+            });
+
+            // Step 3: Auto-Calculate Tiers via Breadth-First Search (Starting from Grey)
+            let tiers = {};
+            let queue = ['GreyMutation'];
+            if (breedsMap['GreyMutation']) {
+                tiers['GreyMutation'] = 0;
+                while(queue.length > 0) {
+                    let curr = queue.shift();
+                    let b = breedsMap[curr];
+                    if(!b) continue;
+                    let slimeComp = b.components?.find(c => c.type === 'Slime');
+                    if(slimeComp && slimeComp.potentialMutations) {
+                        slimeComp.potentialMutations.forEach(mut => {
+                            if (tiers[mut] === undefined) {
+                                tiers[mut] = tiers[curr] + 1;
+                                queue.push(mut);
+                            }
+                        });
+                    }
+                }
+            }
+
+            // Step 4: Build finalized Array
+            let parsedList = [];
+            maxTierGlobal = 0;
+
+            Object.values(breedsMap).forEach(breed => {
+                const extractId = breed.producedExtract;
+                const extractEnt = extractsMap[extractId];
+                if (!extractEnt) return;
+
+                const slimeComp = breed.components?.find(c => c.type === 'Slime') || {};
+                const name = (breed.breedName || extractEnt.name || extractId).replace(/ slime/i, '');
+                
+                const tier = tiers[breed.id] !== undefined ? tiers[breed.id] : '?';
+                if (tier !== '?' && tier > maxTierGlobal) maxTierGlobal = tier;
+
+                let hex = slimeComp.slimeColor || '#828282';
+                
+                let parsedReactions = [];
+                const reactComp = extractEnt.components?.find(c => c.type === "Reactive" && c.reactions);
+                if (reactComp) {
+                    reactComp.reactions.forEach(rxn => {
+                        const reagent = rxn.reagents[0];
+                        let resultHTML = [];
+                        let isFail = false;
+
+                        rxn.effects.forEach(eff => {
+                            // Detect actual failures based on messages
+                            if(eff.messages && eff.messages.includes("xeno-extract-reaction-fail")) isFail = true;
+
+                            let txt = ""; let tt = "";
+                            const tData = TOOLTIP_DATA[eff.reagent] || TOOLTIP_DATA[eff.entity] || TOOLTIP_DATA[eff.prototypeId] || TOOLTIP_DATA[eff.gas] || (eff.solution && eff.solution.reagents ? TOOLTIP_DATA[eff.solution.reagents[0].ReagentId] : null);
+                            const tName = tData ? tData.name : "Unknown";
+                            const tDesc = tData ? tData.desc : null;
+
+                            if(eff.ss14_type === "AdjustReagent") { txt = `Produces ${eff.amount}u ${tName}`; tt = tDesc; }
+                            else if(eff.ss14_type === "CreateEntityReactionEffect") { txt = `Spawns ${eff.number || 1}x ${tName}`; tt = tDesc; }
+                            else if(eff.ss14_type === "CreateRQuantityEntityReactionEffect") { txt = `Spawns up to ${eff.maxEntities}x ${tName}`; tt = tDesc; }
+                            else if(eff.ss14_type === "CreateGas") { txt = `Releases ${tName} Gas`; tt = tDesc; }
+                            else if(eff.ss14_type === "AreaReactionEffect" && eff.prototypeId) { txt = `Releases ${tName}`; tt = tDesc; }
+                            else if(eff.ss14_type === "DoSmokeEntityEffect") {
+                                txt = tName !== "Unknown" ? `Creates ${tName} Smoke` : "Smoke Cloud";
+                                tt = tDesc || ACTION_TOOLTIPS["DoSmokeEntityEffect"];
+                            }
+                            else if(ACTION_TOOLTIPS[eff.ss14_type]) {
+                                // Mapped direct actions (Ignite, EMP, etc)
+                                let actionNames = {
+                                    "IgniteNearbyEffect": "Ignites Nearby", "FlashReactionEffect": "Flashes Nearby", 
+                                    "ExtinguishNearby": "Extinguishes Fires", "EmpReactionEffect": "EMP Blast",
+                                    "RandomTeleportNearby": "Random Teleport", "MutateNearbyPlantsEntityEffect": "Mutates Plants",
+                                    "ForceStealthNearbyEffect": "Grants Stealth", "ChangeFactionNearbyEffect": "Frenzies Mobs",
+                                    "ScrambleNearbyEffect": "Scrambles Entities", "ExplosionReactionEffect": "Massive Explosion"
+                                };
+                                txt = actionNames[eff.ss14_type];
+                                tt = ACTION_TOOLTIPS[eff.ss14_type];
+                            }
+
+                            if(txt) resultHTML.push(buildEffectHTML(txt, tt));
+                        });
+
+                        let finalStr = resultHTML.length > 0 ? resultHTML.join(' <span class="text-slate-600">+</span> ') : '';
+                        if (isFail && resultHTML.length === 0) finalStr = '<span class="text-rose-400 italic">Reaction Fails</span>';
+                        else if (!finalStr) finalStr = '<span class="text-slate-500 italic">Unknown Reaction</span>';
+
+                        parsedReactions.push({ reagent, result: finalStr });
+                    });
+                }
+
+                let mutatesTo = (slimeComp.potentialMutations || []).map(mId => breedsMap[mId]?.producedExtract).filter(Boolean);
+                let parents = (breedParents[breed.id] || []).map(mId => breedsMap[mId]?.producedExtract).filter(Boolean);
+
+                parsedList.push({
+                    id: extractId, name: name.charAt(0).toUpperCase() + name.slice(1), hex: hex, tier: tier,
+                    chance: slimeComp.mutationChance ? `${Math.round(slimeComp.mutationChance * 100)}%` : '?',
+                    offspring: slimeComp.maxOffspring ? `2-${slimeComp.maxOffspring}` : '?',
+                    mutatesTo: mutatesTo, parents: parents, reactions: parsedReactions
+                });
+            });
+
+            return parsedList.sort((a,b) => (a.tier === '?' ? 99 : a.tier) - (b.tier === '?' ? 99 : b.tier));
+        }
+
+        // --- 3. UI STATE & LOGIC ---
+        let currentTierFilter = 'all';
+        let currentSearchText = '';
+        let currentFamilyLineTarget = null; 
+
+        const gridEl = document.getElementById('slime-grid');
+        const searchBar = document.getElementById('search-bar');
+        const clearFiltersBtn = document.getElementById('clear-filters-btn');
+        const tierFiltersContainer = document.getElementById('tier-filters');
+
+        function getSlime(id) { return rawDatabase.find(s => s.id === id); }
+
+        function getLinearFamilyPath(targetId) {
+            const rootId = rawDatabase.find(s => s.name.toLowerCase() === 'grey')?.id || 'GreySlimeExtract';
+            if (targetId === rootId) return [rootId];
+
+            const queue = [ [rootId] ];
+            const visited = new Set([rootId]);
+
+            while (queue.length > 0) {
+                const currentPath = queue.shift();
+                const currentId = currentPath[currentPath.length - 1];
+
+                const currentSlime = getSlime(currentId);
+                if (!currentSlime || !currentSlime.mutatesTo) continue;
+
+                for (const childId of currentSlime.mutatesTo) {
+                    if (childId === targetId) return [...currentPath, childId];
+                    if (!visited.has(childId)) {
+                        visited.add(childId);
+                        queue.push([...currentPath, childId]);
+                    }
+                }
+            }
+
+            const fallbackPath = [];
+            let curr = targetId;
+            const fallbackVisited = new Set();
+            while (curr && !fallbackVisited.has(curr)) {
+                fallbackVisited.add(curr);
+                fallbackPath.unshift(curr);
+                const slime = getSlime(curr);
+                curr = (slime && slime.parents && slime.parents.length > 0) ? slime.parents[0] : null;
+            }
+            return fallbackPath;
+        }
+
+        function buildTierButtons() {
+            tierFiltersContainer.innerHTML = `<button data-tier="all" class="filter-btn active bg-emerald-600 text-white px-3 py-1 rounded-md text-sm font-semibold transition-colors">All</button>`;
+            for(let i=0; i<=maxTierGlobal; i++) {
+                tierFiltersContainer.innerHTML += `<button data-tier="${i}" class="filter-btn bg-slate-800 text-slate-400 border border-slate-700 px-3 py-1 rounded-md text-sm hover:bg-slate-700 transition-colors">T${i}</button>`;
+            }
+            document.querySelectorAll('#tier-filters .filter-btn').forEach(btn => btn.addEventListener('click', (e) => setTierFilter(e.target.dataset.tier)));
+        }
+
+        // --- 4. RENDERERS ---
+        function renderFamilyTree(targetId) {
+            const flowContainer = document.getElementById('family-tree-flow');
+            flowContainer.innerHTML = '';
+            
+            const pathIds = getLinearFamilyPath(targetId);
+            
+            pathIds.forEach((id, index) => {
+                const slime = getSlime(id);
+                if (!slime) return;
+
+                const isTarget = slime.id === targetId;
+                const btn = document.createElement('button');
+                btn.onclick = () => jumpToSlime(slime.id);
+                btn.className = `px-4 py-2.5 rounded-xl border text-sm transition-all flex items-center gap-2.5 shadow-sm ${isTarget ? 'bg-emerald-900/50 border-emerald-500 text-emerald-100 shadow-[0_0_15px_rgba(16,185,129,0.2)] font-bold' : 'bg-slate-800/80 border-slate-600 hover:bg-slate-700 hover:border-slate-400 text-slate-200'}`;
+                btn.innerHTML = `
+                    <span class="text-[10px] font-mono font-bold text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded">T${slime.tier}</span>
+                    <span class="w-3.5 h-3.5 rounded-full flex-shrink-0 shadow-sm shadow-black border border-slate-900" style="background-color: ${slime.hex}"></span>
+                    <span class="whitespace-nowrap">${slime.name}</span>
+                `;
+                flowContainer.appendChild(btn);
+
+                if (index < pathIds.length - 1) {
+                    const arrow = document.createElement('div');
+                    arrow.className = 'flex items-center text-slate-500 px-1';
+                    arrow.innerHTML = `<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>`;
+                    flowContainer.appendChild(arrow);
+                }
+            });
+        }
+
+        function renderCards() {
+            gridEl.innerHTML = ''; 
+            const lowerFilter = currentSearchText.toLowerCase();
+            let familySet = currentFamilyLineTarget ? new Set(getLinearFamilyPath(currentFamilyLineTarget)) : null;
+            let matchCount = 0;
+
+            rawDatabase.forEach(slime => {
+                if (currentTierFilter !== 'all' && slime.tier.toString() !== currentTierFilter) return;
+                if (familySet && !familySet.has(slime.id)) return;
+                
+                // Allow searching by raw html strip (to search tooltips or names)
+                const rxnStrip = slime.reactions.map(r => r.result.replace(/<[^>]*>?/gm, '')).join(' ').toLowerCase();
+                const matchesName = slime.name.toLowerCase().includes(lowerFilter);
+                const matchesReaction = rxnStrip.includes(lowerFilter);
+                if (currentSearchText && !matchesName && !matchesReaction) return;
+
+                matchCount++;
+                
+                let mutsHtml = slime.mutatesTo.map(mId => {
+                    const mSlime = getSlime(mId);
+                    if(!mSlime) return '';
+                    return `<button onclick="jumpToSlime('${mId}')" class="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-700 text-xs px-2 py-1 rounded-md mr-1.5 mb-1.5 border border-slate-700 transition-colors">
+                                <span class="w-2 h-2 rounded-full block shadow-black shadow-sm" style="background-color: ${mSlime.hex}"></span>${mSlime.name}
+                            </button>`;
+                }).join('');
+                if (!mutsHtml) mutsHtml = '<span class="text-xs text-slate-500 italic">None</span>';
+
+                const rxnsHtml = slime.reactions.map(rxn => {
+                    let dotColor = rxn.reagent === 'Plasma' ? 'bg-purple-500' : rxn.reagent === 'Blood' ? 'bg-rose-500' : rxn.reagent === 'Water' ? 'bg-blue-400' : 'bg-green-400';
+                    return `
+                        <div class="flex items-start gap-2 text-sm mt-1.5 border-t border-slate-800/60 pt-1.5 leading-snug">
+                            <div class="w-2 h-2 rounded-full ${dotColor} mt-1.5 flex-shrink-0 shadow-sm shadow-black"></div>
+                            <div>
+                                <span class="font-semibold text-slate-300 mr-1">${rxn.reagent}:</span>
+                                ${rxn.result}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                const card = document.createElement('div');
+                card.id = `card-${slime.id}`;
+                card.className = "bg-slate-900/60 rounded-xl p-4 shadow-md border-t-4 flex flex-col relative transition-shadow hover:shadow-xl border-x border-b border-x-slate-800 border-b-slate-800";
+                card.style.borderTopColor = slime.hex;
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <h2 class="text-lg font-bold flex items-center gap-2 tracking-tight">
+                            <span class="w-3.5 h-3.5 rounded-full border border-slate-900 shadow-[0_0_8px_${slime.hex}80]" style="background-color: ${slime.hex}"></span>
+                            ${slime.name}
+                        </h2>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="setFamilyLine('${slime.id}')" title="Filter to Mutation Path" class="p-1.5 bg-slate-800 hover:bg-emerald-600/30 text-slate-400 hover:text-emerald-400 rounded-md transition-colors border border-slate-700">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                            </button>
+                            <span class="text-xs font-mono font-bold text-slate-400 bg-slate-950 border border-slate-800 px-1.5 py-0.5 rounded">T${slime.tier}</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 text-xs font-medium text-slate-500 mb-3 pb-3 border-b border-slate-800/80">
+                        <div>Chance: <span class="text-slate-300">${slime.chance}</span></div>
+                        <div>Mitosis: <span class="text-slate-300">${slime.offspring}</span></div>
+                    </div>
+                    
+                    <div class="mb-4 flex-1">
+                        <div class="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1.5">Mutates to</div>
+                        <div class="flex flex-wrap">${mutsHtml}</div>
+                    </div>
+
+                    <div class="mt-auto bg-slate-950/60 rounded-lg p-3 border border-slate-800/50">
+                        <div class="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Extract Reactions</div>
+                        ${rxnsHtml}
+                    </div>
+                `;
+                gridEl.appendChild(card);
+            });
+
+            document.getElementById('no-results').classList.toggle('hidden', matchCount !== 0);
+            
+            const banner = document.getElementById('family-line-banner');
+            if (currentFamilyLineTarget) {
+                banner.classList.remove('hidden');
+                clearFiltersBtn.classList.remove('hidden');
+                renderFamilyTree(currentFamilyLineTarget);
+            } else {
+                banner.classList.add('hidden');
+                clearFiltersBtn.classList.toggle('hidden', currentTierFilter === 'all' && currentSearchText === '');
+            }
+        }
+
+        // --- 5. INTERACTION ACTIONS ---
+        window.setFamilyLine = function(targetId) {
+            currentFamilyLineTarget = targetId;
+            const targetName = getSlime(targetId)?.name || targetId;
+            document.getElementById('family-line-text').textContent = targetName;
+            setTierFilter('all');
+            renderCards();
+        }
+
+        window.jumpToSlime = function(targetId) {
+            currentFamilyLineTarget = null;
+            setTierFilter('all');
+            currentSearchText = '';
+            searchBar.value = '';
+            renderCards();
+
+            setTimeout(() => {
+                const cardEl = document.getElementById(`card-${targetId}`);
+                if (cardEl) {
+                    const headerOffset = 80; 
+                    const offsetPosition = cardEl.getBoundingClientRect().top + window.pageYOffset - headerOffset;
+                    window.scrollTo({ top: offsetPosition, behavior: "smooth" });
+                    
+                    cardEl.classList.remove('highlight-card');
+                    void cardEl.offsetWidth; 
+                    cardEl.classList.add('highlight-card');
+                }
+            }, 50); 
+        }
+
+        function setTierFilter(tierVal) {
+            currentTierFilter = tierVal;
+            document.querySelectorAll('#tier-filters .filter-btn').forEach(btn => {
+                if(btn.dataset.tier === tierVal) {
+                    btn.classList.add('bg-emerald-600', 'text-white', 'border-emerald-600');
+                    btn.classList.remove('bg-slate-800', 'text-slate-400', 'border-slate-700');
+                } else {
+                    btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600');
+                    btn.classList.add('bg-slate-800', 'text-slate-400', 'border-slate-700');
+                }
+            });
+            renderCards();
+        }
+
+        // --- 6. EVENT LISTENERS & INIT ---
+        searchBar.addEventListener('input', (e) => {
+            currentSearchText = e.target.value;
+            renderCards();
+        });
+
+        clearFiltersBtn.addEventListener('click', () => {
+            currentFamilyLineTarget = null;
+            setTierFilter('all');
+            currentSearchText = '';
+            searchBar.value = '';
+            renderCards();
+        });
+
+        document.getElementById('json-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const jsonData = JSON.parse(event.target.result);
+                    rawDatabase = parseGoobstationJSON(jsonData);
+                    buildTierButtons();
+                    currentFamilyLineTarget = null;
+                    renderCards();
+                } catch(err) {
+                    alert("Error parsing JSON file. Ensure it was generated by the updated build-db.ps1 script.");
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Minified version of xenobio_db2.json to act as standalone fallback
+        const FALLBACK_JSON_STR = '[{"id":"BaseSlimeExtract","type":"entity","parent":"BaseItem","description":"Goo extracted from a slime. Legends claim these to have \\"magical powers\\".","name":"slime extract","components":[{"type":"Item","size":"Small"},{"type":"Sprite","layers":[{"color":"#828282","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"type":"Appearance"},{"type":"SolutionContainerManager","solutions":{"extract":{"maxVol":100}}},{"type":"InjectableSolution","solution":"extract"},{"type":"DrawableSolution","solution":"extract"},{"type":"ExaminableSolution","solution":"extract"},{"type":"SlimeExtract"},{"type":"Reactive","oneUnitReaction":true},{"type":"StatusEffects","allowed":["Jitter"]},{"guides":["Xenobiology"],"type":"GuideHelp"}],"abstract":true},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#828282","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":15,"reagent":"Epinephrine","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"frequency":20,"time":3,"ss14_type":"Jitter"},{"delay":3,"entity":"MobSlimeXenobioBabyGrey","number":3,"ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":3,"entity":"MonkeyCube","ss14_type":"CreateEntityReactionEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyGreyExtract"],"type":"Tag"}],"name":"grey slime extract","id":"GreySlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#79F6FC","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"duration":10,"sound":{"path":"/Audio/Effects/extinguish.ogg"},"prototypeId":"Foam","ss14_type":"AreaReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":30,"reagent":"FrostOil","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":1,"reagent":"XenobioJellyBlue","ss14_type":"AdjustReagent"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyBlueExtract"],"type":"Tag"}],"name":"blue slime extract","id":"BlueSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#595959","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","shader":"XenoMetallic","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":15,"entity":"SheetGlass1","ss14_type":"CreateEntityReactionEffect"},{"number":5,"entity":"SheetRGlass1","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":15,"entity":"SheetSteel1","ss14_type":"CreateEntityReactionEffect"},{"number":5,"entity":"SheetPlasteel1","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-fail"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyMetalExtract"],"type":"Tag"}],"name":"metal slime extract","id":"MetalSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#ff9f1a","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"smokePrototype":"Smoke","duration":10,"spreadAmount":75,"solution":{"reagents":[{"Quantity":20,"ReagentId":"TearGas"}]},"ss14_type":"DoSmokeEntityEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"radius":3,"fireStacks":5,"ss14_type":"IgniteNearbyEffect"},{"sound":"/Audio/_Goobstation/Wizard/zapbang.ogg","maxRange":7,"rangePerUnit":1,"ss14_type":"FlashReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":30,"reagent":"CapsaicinOil","ss14_type":"AdjustReagent"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyOrangeExtract"],"type":"Tag"}],"name":"orange slime extract","id":"OrangeSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#BF77F6","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"maxEntities":4,"entity":"ArtifactFragment1","ss14_type":"CreateRQuantityEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":1,"reagent":"XenobioJellyPurple","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":15,"reagent":"Omnizine","ss14_type":"AdjustReagent"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyPurpleExtract"],"type":"Tag"}],"name":"purple slime extract","id":"PurpleSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#2A52BE","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"gas":"Pluoxium","multiplier":55,"ss14_type":"CreateGas"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"ss14_type":"ExtinguishNearby"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":1,"reagent":"XenobioJellyCerulean","ss14_type":"AdjustReagent"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyCeruleanExtract"],"type":"Tag"}],"name":"cerulean slime extract","id":"CeruleanSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#1e8cfa","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":1,"reagent":"XenobioJellyDarkBlue","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"gas":"Frezon","multiplier":35,"ss14_type":"CreateGas"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":30,"reagent":"Leporazine","ss14_type":"AdjustReagent"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyDarkBlueExtract"],"type":"Tag"}],"name":"dark blue slime extract","id":"DarkBlueSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#8e0ff0","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":3,"entity":"SheetPlastic10","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":3,"entity":"SheetPlasma1","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"gas":"Plasma","multiplier":55,"ss14_type":"CreateGas"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyDarkPurpleExtract"],"type":"Tag"}],"name":"dark purple slime extract","id":"DarkPurpleSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#c4c4c4","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","shader":"XenoMetallic","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"frequency":20,"time":5,"ss14_type":"Jitter"},{"duration":10,"sound":{"path":"/Audio/Effects/extinguish.ogg"},"prototypeId":"AluminiumMetalFoam","delay":5,"ss14_type":"AreaReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":2,"entity":"IngotSilver1","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":3,"entity":"XenobioGoopBall","ss14_type":"CreateEntityReactionEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologySilverExtract"],"type":"Tag"}],"name":"silver slime extract","id":"SilverSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#ffff1a","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-fail"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":1,"entity":"XenobioVolatileOrgan","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"ss14_type":"EmpReactionEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyYellowExtract"],"type":"Tag"}],"name":"yellow slime extract","id":"YellowSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#f0f8ff","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","shader":"XenoBluespace","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":30,"entity":"FloorTileItemBluespace","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":5,"entity":"MaterialBSCrystal1","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"ss14_type":"RandomTeleportNearby"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyBluespaceExtract"],"type":"Tag"}],"name":"bluespace slime extract","id":"BluespaceSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#e8b923","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","shader":"XenoMetallic","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"frequency":20,"time":3,"ss14_type":"Jitter"},{"number":5,"entity":"RPassiveMobSpawner","delay":3,"ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"frequency":20,"time":3,"ss14_type":"Jitter"},{"number":5,"entity":"RHostileMobSpawner","delay":3,"ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"frequency":20,"time":3,"ss14_type":"Jitter"},{"number":5,"entity":"RNeutralMobSpawner","delay":3,"ss14_type":"CreateEntityReactionEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyGoldExtract"],"type":"Tag"}],"name":"gold slime extract","id":"GoldSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#4dff4d","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Radium"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":10,"reagent":"XenobioFelinidToxin","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":10,"reagent":"XenobioJellyGreen","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":10,"reagent":"XenobioHumanToxin","ss14_type":"AdjustReagent"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyGreenExtract"],"type":"Tag"}],"name":"green slime extract","id":"GreenSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#ff33cc","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"radius":5,"ss14_type":"MutateNearbyPlantsEntityEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":10,"reagent":"XenobioJellyPink","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":10,"reagent":"XenobioGenderFluid","ss14_type":"AdjustReagent"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyPinkExtract"],"type":"Tag"}],"name":"pink slime extract","id":"PinkSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#dcaa4f","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","shader":"XenoMetallic","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"radius":12,"duration":60,"chance":0.5,"ss14_type":"ForceStealthNearbyEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"smokePrototype":"Smoke","duration":5,"spreadAmount":75,"ss14_type":"DoSmokeEntityEffect"},{"radius":7,"duration":30,"ss14_type":"ForceStealthNearbyEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"radius":1.5,"duration":120,"ss14_type":"ForceStealthNearbyEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyPyriteExtract"],"type":"Tag"}],"name":"pyrite slime extract","id":"PyriteSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#ff3333","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":1,"entity":"XenobioVolatileRedExtractJelly","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":1,"reagent":"XenobioJellyRed","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"radius":3,"duration":30,"newFaction":"AllHostile","ss14_type":"ChangeFactionNearbyEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyRedExtract"],"type":"Tag"}],"name":"red slime extract","id":"RedSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#704214","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","shader":"XenoSepia","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":100,"reagent":"Tilenol","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"frequency":20,"time":5,"ss14_type":"Jitter"},{"delay":5,"entity":"XenoExtractChronofield","number":1,"ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":30,"entity":"FloorTileItemSepia","ss14_type":"CreateEntityReactionEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologySepiaExtract"],"type":"Tag"}],"name":"sepia slime extract","id":"SepiaSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#005c33","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","shader":"XenoMetallic","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"gas":"Healium","multiplier":55,"ss14_type":"CreateGas"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"number":1,"entity":"XenobioAdamantineBar","ss14_type":"CreateEntityReactionEffect"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-fail"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyAdamantineExtract"],"type":"Tag"}],"name":"adamantine slime extract","id":"AdamantineSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#000000","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-fail"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":10,"reagent":"AdvancedMutationToxin","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-fail"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyBlackExtract"],"type":"Tag"}],"name":"black slime extract","id":"BlackSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#ffb3ec","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"smokePrototype":"Foam","duration":15,"spreadAmount":50,"solution":{"reagents":[{"Quantity":30,"ReagentId":"Pax"}]},"ss14_type":"DoSmokeEntityEffect"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":10,"reagent":"Cognizine","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"frequency":20,"time":3,"ss14_type":"Jitter"},{"radius":3,"delay":3,"ss14_type":"ScrambleNearbyEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyLightPinkExtract"],"type":"Tag"}],"name":"light pink slime extract","id":"LightPinkSlimeExtract","type":"entity"},{"parent":"BaseSlimeExtract","components":[{"type":"Sprite","layers":[{"color":"#383936","sprite":"_Goobstation/Xenobiology/Specific/Xenobiology/extract.rsi","shader":"XenoMetallic","state":"core"}]},{"reactions":[{"methods":["Touch","Injection"],"reagents":["Water"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-reagent"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"amount":100,"reagent":"SpaceLube","ss14_type":"AdjustReagent"}]},{"methods":["Touch","Injection"],"reagents":["Plasma"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-evil"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"},{"frequency":20,"time":5,"ss14_type":"Jitter"},{"delay":5,"intensityPerUnit":70,"maxIntensity":1050,"ss14_type":"ExplosionReactionEffect","explosionType":"FireBomb","intensitySlope":4}]},{"methods":["Touch","Injection"],"reagents":["Blood"],"effects":[{"ss14_type":"MakeUnreactiveEntityEffect"},{"messages":["xeno-extract-reaction-fail"],"type":"Pvs","ss14_type":"PopupMessage"},{"sound":"/Audio/Effects/Chemistry/bubbles.ogg","ss14_type":"PlaySoundEffect"}]}],"type":"Reactive","oneUnitReaction":true},{"tags":["XenobiologyOilExtract"],"type":"Tag"}],"name":"oil slime extract","id":"OilSlimeExtract","type":"entity"},{"producedExtract":"GreySlimeExtract","components":[{"type":"Slime","slimeColor":"#828282","maxOffspring":4,"mutationChance":0.45,"breed":"GreyMutation","potentialMutations":["OrangeMutation","PurpleMutation","BlueMutation","MetalMutation"]}],"type":"breed","id":"GreyMutation","breedName":"grey slime"},{"producedExtract":"OrangeSlimeExtract","components":[{"type":"Slime","slimeColor":"#ff9f1a","maxOffspring":4,"mutationChance":0.45,"breed":"OrangeMutation","potentialMutations":["GreyMutation","YellowMutation","DarkPurpleMutation","RedMutation"]}],"type":"breed","id":"OrangeMutation","breedName":"orange slime"},{"producedExtract":"PurpleSlimeExtract","components":[{"type":"Slime","slimeColor":"#BF77F6","maxOffspring":4,"mutationChance":0.45,"breed":"PurpleMutation","potentialMutations":["GreyMutation","DarkPurpleMutation","DarkBlueMutation","GreenMutation"]}],"type":"breed","id":"PurpleMutation","breedName":"purple slime"},{"producedExtract":"BlueSlimeExtract","components":[{"type":"Slime","slimeColor":"#79F6FC","maxOffspring":4,"mutationChance":0.45,"breed":"BlueMutation","potentialMutations":["GreyMutation","DarkBlueMutation","SilverMutation","PinkMutation"]}],"type":"breed","id":"BlueMutation","breedName":"blue slime"},{"producedExtract":"MetalSlimeExtract","components":[{"shader":"XenoMetallic","type":"Slime","slimeColor":"#595959","shouldHaveShader":true,"mutationChance":0.45,"breed":"MetalMutation","potentialMutations":["GreyMutation","SilverMutation","YellowMutation","GoldMutation"],"maxOffspring":4}],"type":"breed","id":"MetalMutation","breedName":"metal slime"},{"producedExtract":"YellowSlimeExtract","components":[{"type":"Slime","slimeColor":"#ffff1a","maxOffspring":4,"mutationChance":0.45,"breed":"YellowMutation","potentialMutations":["OrangeMutation","MetalMutation","BluespaceMutation"]}],"type":"breed","id":"YellowMutation","breedName":"yellow slime"},{"producedExtract":"DarkPurpleSlimeExtract","components":[{"type":"Slime","slimeColor":"#8e0ff0","maxOffspring":4,"mutationChance":0.45,"breed":"DarkPurpleMutation","potentialMutations":["PurpleMutation","OrangeMutation","SepiaMutation"]}],"type":"breed","id":"DarkPurpleMutation","breedName":"dark purple slime"},{"producedExtract":"DarkBlueSlimeExtract","components":[{"type":"Slime","slimeColor":"#1e8cfa","maxOffspring":4,"mutationChance":0.45,"breed":"DarkBlueMutation","potentialMutations":["BlueMutation","PurpleMutation","CeruleanMutation"]}],"type":"breed","id":"DarkBlueMutation","breedName":"dark blue slime"},{"producedExtract":"SilverSlimeExtract","components":[{"shader":"XenoMetallic","type":"Slime","slimeColor":"#c4c4c4","shouldHaveShader":true,"mutationChance":0.45,"breed":"SilverMutation","potentialMutations":["BlueMutation","MetalMutation","PyriteMutation"],"maxOffspring":4}],"type":"breed","id":"SilverMutation","breedName":"silver slime"},{"producedExtract":"BluespaceSlimeExtract","components":[{"shader":"XenoBluespace","type":"Slime","slimeColor":"#f0f8ff","shouldHaveShader":true,"mutationChance":0.45,"breed":"BluespaceMutation","potentialMutations":["BluespaceMutation"],"maxOffspring":4}],"type":"breed","id":"BluespaceMutation","breedName":"bluespace slime"},{"producedExtract":"SepiaSlimeExtract","components":[{"shader":"XenoSepia","type":"Slime","slimeColor":"#704214","shouldHaveShader":true,"mutationChance":0.45,"breed":"SepiaMutation","potentialMutations":["SepiaMutation"],"maxOffspring":4}],"type":"breed","id":"SepiaMutation","breedName":"sepia slime"},{"producedExtract":"CeruleanSlimeExtract","components":[{"type":"Slime","slimeColor":"#2A52BE","maxOffspring":4,"mutationChance":0.45,"breed":"CeruleanMutation","potentialMutations":["CeruleanMutation"]}],"type":"breed","id":"CeruleanMutation","breedName":"cerulean slime"},{"producedExtract":"PyriteSlimeExtract","components":[{"shader":"XenoMetallic","type":"Slime","slimeColor":"#dcaa4f","shouldHaveShader":true,"mutationChance":0.45,"breed":"PyriteMutation","potentialMutations":["PyriteMutation"],"maxOffspring":4}],"type":"breed","id":"PyriteMutation","breedName":"pyrite slime"},{"producedExtract":"RedSlimeExtract","components":[{"type":"Slime","slimeColor":"#ff3333","maxOffspring":4,"mutationChance":0.45,"breed":"RedMutation","potentialMutations":["RedMutation","OilMutation"]}],"type":"breed","id":"RedMutation","breedName":"red slime"},{"producedExtract":"GreenSlimeExtract","components":[{"type":"Slime","slimeColor":"#4dff4d","maxOffspring":4,"mutationChance":0.45,"breed":"GreenMutation","potentialMutations":["GreenMutation","BlackMutation"]}],"type":"breed","id":"GreenMutation","breedName":"green slime"},{"producedExtract":"PinkSlimeExtract","components":[{"type":"Slime","slimeColor":"#ff33cc","maxOffspring":4,"mutationChance":0.45,"breed":"PinkMutation","potentialMutations":["PinkMutation","LightPinkMutation"]}],"type":"breed","id":"PinkMutation","breedName":"pink slime"},{"producedExtract":"GoldSlimeExtract","components":[{"shader":"XenoMetallic","type":"Slime","slimeColor":"#e8b923","shouldHaveShader":true,"mutationChance":0.45,"breed":"GoldMutation","potentialMutations":["GoldMutation","AdamantineMutation"],"maxOffspring":4}],"type":"breed","id":"GoldMutation","breedName":"gold slime"},{"producedExtract":"OilSlimeExtract","components":[{"shader":"XenoMetallic","type":"Slime","slimeColor":"#383936","shouldHaveShader":true,"mutationChance":0.45,"breed":"OilMutation","potentialMutations":["OilMutation"],"maxOffspring":4}],"type":"breed","id":"OilMutation","breedName":"oil slime"},{"producedExtract":"LightPinkSlimeExtract","components":[{"type":"Slime","slimeColor":"#ffb3ec","maxOffspring":4,"mutationChance":0.45,"breed":"LightPinkMutation","potentialMutations":["LightPinkMutation"]}],"type":"breed","id":"LightPinkMutation","breedName":"light pink slime"},{"producedExtract":"BlackSlimeExtract","components":[{"type":"Slime","slimeColor":"#000000","maxOffspring":4,"mutationChance":0.45,"breed":"BlackMutation","potentialMutations":["BlackMutation"]}],"type":"breed","id":"BlackMutation","breedName":"black slime"},{"producedExtract":"AdamantineSlimeExtract","components":[{"shader":"XenoMetallic","type":"Slime","slimeColor":"#005c33","shouldHaveShader":true,"mutationChance":0.45,"breed":"AdamantineMutation","potentialMutations":["AdamantineMutation"],"maxOffspring":4}],"type":"breed","id":"AdamantineMutation","breedName":"adamantine slime"}]';
+
+        async function initApp() {
+            try {
+                const response = await fetch('./xenobio_db.json');
+                if (!response.ok) throw new Error('Network response was not ok');
+                const jsonData = await response.json();
+                
+                rawDatabase = parseGoobstationJSON(jsonData);
+                buildTierButtons();
+                renderCards();
+                console.log('Successfully loaded xenobio_db.json from directory.');
+            } catch (error) {
+                console.log('Could not auto-load xenobio_db.json. Falling back to embedded V2 data.');
+                rawDatabase = parseGoobstationJSON(JSON.parse(FALLBACK_JSON_STR));
+                buildTierButtons();
+                renderCards();
+            }
+        }
+
+        // Run the initialization
+        initApp();
+    </script>
+</body>
+</html>
